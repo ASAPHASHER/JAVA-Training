@@ -1,0 +1,88 @@
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.stream.*;
+
+class ComplexJava {
+    record Pair<K, V>(K key, V value) {}
+
+    static class Graph<T> {
+        private final Map<T, List<Pair<T, Integer>>> adj = new HashMap<>();
+
+        void addEdge(T src, T dest, int weight) {
+            adj.computeIfAbsent(src, k -> new ArrayList<>()).add(new Pair<>(dest, weight));
+            adj.computeIfAbsent(dest, k -> new ArrayList<>()).add(new Pair<>(src, weight));
+        }
+
+        Map<T, Integer> dijkstra(T start) {
+            Map<T, Integer> dist = new HashMap<>();
+            PriorityQueue<Pair<T, Integer>> pq = new PriorityQueue<>(Comparator.comparingInt(Pair::value));
+            adj.keySet().forEach(v -> dist.put(v, Integer.MAX_VALUE));
+            dist.put(start, 0);
+            pq.add(new Pair<>(start, 0));
+
+            while (!pq.isEmpty()) {
+                var u = pq.poll();
+                for (var edge : adj.getOrDefault(u.key(), List.of())) {
+                    int newDist = u.value() + edge.value();
+                    if (newDist < dist.get(edge.key())) {
+                        dist.put(edge.key(), newDist);
+                        pq.add(new Pair<>(edge.key(), newDist));
+                    }
+                }
+            }
+            return dist;
+        }
+    }
+
+    static <T> List<List<T>> powerSet(List<T> list) {
+        return IntStream.range(0, 1 << list.size())
+                .mapToObj(i -> IntStream.range(0, list.size())
+                        .filter(j -> (i & (1 << j)) != 0)
+                        .mapToObj(list::get)
+                        .collect(Collectors.toList()))
+                .collect(Collectors.toList());
+    }
+
+    static <T, R> R timeExecution(Supplier<R> func) {
+        long start = System.nanoTime();
+        R result = func.get();
+        long end = System.nanoTime();
+        System.out.println("Execution time: " + (end - start) / 1e6 + " ms");
+        return result;
+    }
+
+    public static void main(String[] args) {
+        Graph<String> g = new Graph<>();
+        g.addEdge("A", "B", 4);
+        g.addEdge("A", "C", 2);
+        g.addEdge("B", "C", 5);
+        g.addEdge("B", "D", 10);
+        g.addEdge("C", "E", 3);
+        g.addEdge("E", "D", 4);
+
+        Map<String, Integer> shortestPaths = timeExecution(() -> g.dijkstra("A"));
+        shortestPaths.forEach((k, v) -> System.out.println(k + " -> " + v));
+
+        List<Integer> nums = List.of(1, 2, 3, 4);
+        List<List<Integer>> subsets = timeExecution(() -> powerSet(nums));
+        System.out.println("Total subsets: " + subsets.size());
+
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        List<Callable<Integer>> tasks = subsets.stream()
+                .map(set -> (Callable<Integer>) () -> set.stream().reduce(0, Integer::sum))
+                .toList();
+
+        try {
+            List<Future<Integer>> results = executor.invokeAll(tasks);
+            int totalSum = results.stream().mapToInt(f -> {
+                try { return f.get(); } catch (Exception e) { return 0; }
+            }).sum();
+            System.out.println("Sum of all subset sums: " + totalSum);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            executor.shutdown();
+        }
+    }
+}
